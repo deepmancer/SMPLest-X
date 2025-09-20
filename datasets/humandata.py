@@ -4,10 +4,10 @@ import numpy as np
 import torch
 import copy
 from human_models.human_models import SMPL, SMPLX
-from utils.data_utils import load_img, process_bbox, augmentation, \
+from smplestx_utils.data_utils import load_img, process_bbox, augmentation, \
     process_db_coord, process_human_model_output, \
     process_db_coord_crop, gen_cropped_hands
-from utils.transforms import rigid_align, batch_rodrigues
+from smplestx_utils.transforms import rigid_align, batch_rodrigues
 import tqdm
 import time
 import random

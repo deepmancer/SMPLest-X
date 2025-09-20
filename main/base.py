@@ -5,8 +5,7 @@ from torch.utils.data import DataLoader
 from torch.nn.parallel.data_parallel import DataParallel
 import torch.optim
 import torchvision.transforms as transforms
-from utils.timer import Timer
-from utils.logger import colorlogger
+# from smplestx_utils.timer import Timer
 from datasets.dataset import MultipleDatasets
 import importlib
 from models.SMPLest_X import get_model
@@ -16,9 +15,6 @@ import torch.cuda
 import torch.distributed as dist
 from torch.utils.data import DistributedSampler
 import torch.utils.data.distributed
-from utils.distribute_utils import (
-    get_rank, is_main_process, time_synchronized, get_group_idx, get_process_groups, get_dist_info
-)
 
 def dynamic_import(module_name, object_name):
     """Dynamically import a module and access a specific object."""
@@ -33,12 +29,9 @@ class Base(object):
         self.cur_epoch = 0
 
         # timer
-        self.tot_timer = Timer()
-        self.gpu_timer = Timer()
-        self.read_timer = Timer()
-
-        # logger
-        self.logger = colorlogger(cfg.log.log_dir, log_name=log_name)
+        self.tot_timer = lambda: None
+        self.gpu_timer = lambda: None
+        self.read_timer = lambda: None
 
     @abc.abstractmethod
     def _make_batch_generator(self):
@@ -82,7 +75,6 @@ class Trainer(Base):
             state['network'].pop(k, None)
 
         torch.save(state, file_path)
-        self.logger.info(f"Write snapshot into {file_path}")
 
     def load_model(self, model, optimizer):
         if self.cfg.model.pretrained_model_path is not None:
@@ -90,14 +82,12 @@ class Trainer(Base):
             ckpt = torch.load(ckpt_path, map_location=torch.device('cpu')) # solve CUDA OOM error in DDP
             model.load_state_dict(ckpt['network'], strict=False)
             model.cuda()
-            self.logger.info(f'Load checkpoint from {ckpt_path}')
             torch.cuda.empty_cache()
             if getattr(self.cfg.train, 'start_over', True):
                 start_epoch = 0
             else:
                 optimizer.load_state_dict(ckpt['optimizer'])
                 start_epoch = ckpt['epoch'] + 1 
-                self.logger.info(f'Load optimizer, start from {start_epoch}')
         else:
             start_epoch = 0
 
@@ -110,7 +100,6 @@ class Trainer(Base):
 
     def _make_batch_generator(self):
         # data load and construct batch generator
-        self.logger_info("Creating dataset...")
         trainset_humandata_loader = []
         for humandata_dataset in self.cfg.data.trainset_humandata:
             trainset_humandata_loader.append(dynamic_import(
@@ -130,29 +119,17 @@ class Trainer(Base):
         self.itr_per_epoch = math.ceil(
             len(trainset_loader) / self.cfg.train.num_gpus / self.cfg.train.train_batch_size)
 
-        if self.distributed:
-            self.logger_info(f"Total data length {len(trainset_loader)}.")
-            rank, world_size = get_dist_info()
-            self.logger_info("Using distributed data sampler.")
-            
-            sampler_train = DistributedSampler(trainset_loader, world_size, rank, shuffle=True)
-            self.batch_generator = DataLoader(dataset=trainset_loader, batch_size=self.cfg.train.train_batch_size,
-                                            shuffle=False, num_workers=self.cfg.train.num_thread, sampler=sampler_train,
-                                            pin_memory=True, persistent_workers=True if self.cfg.train.num_thread > 0 else False, 
-                                            drop_last=True)
-        else:
-            self.batch_generator = DataLoader(dataset=trainset_loader, 
-                                              batch_size=self.cfg.train.num_gpus * self.cfg.train.train_batch_size,
-                                              shuffle=True, num_workers=self.cfg.train.num_thread,
-                                              pin_memory=True, drop_last=True)
+        
+        self.batch_generator = DataLoader(dataset=trainset_loader, 
+                                            batch_size=self.cfg.train.num_gpus * self.cfg.train.train_batch_size,
+                                            shuffle=True, num_workers=self.cfg.train.num_thread,
+                                            pin_memory=True, drop_last=True)
 
     def _make_model(self):
         # prepare network
-        self.logger_info("Creating graph and optimizer...")
         model = get_model(self.cfg, 'train')
         
         if self.distributed:
-            self.logger_info("Using distributed data parallel.")
             model.cuda()
             model = torch.nn.parallel.DistributedDataParallel(
                 model, device_ids=[self.gpu_idx],
@@ -176,13 +153,6 @@ class Trainer(Base):
         self.model = model
         self.optimizer = optimizer
 
-    def logger_info(self, info):
-        if self.distributed:
-            if is_main_process():
-                self.logger.info(info)
-        else:
-            self.logger.info(info)
-
 
 class Tester(Base):
     def __init__(self, cfg):
@@ -192,7 +162,6 @@ class Tester(Base):
 
     def _make_batch_generator(self):
         # data load and construct batch generator
-        self.logger.info("Creating dataset...")
         testset_loader = dynamic_import(
                 f"datasets.{self.cfg.data.testset}", self.cfg.data.testset)(transforms.ToTensor(), "test", self.cfg)
         batch_generator = DataLoader(dataset=testset_loader, batch_size=self.cfg.test.test_batch_size,
@@ -202,10 +171,6 @@ class Tester(Base):
         self.batch_generator = batch_generator
 
     def _make_model(self):
-        self.logger.info('Load checkpoint from {}'.format(self.cfg.model.pretrained_model_path))
-
-        # prepare network
-        self.logger.info("Creating graph...")
         model = get_model(self.cfg, 'test')
         model = DataParallel(model).cuda()
 
@@ -219,7 +184,6 @@ class Tester(Base):
             k = k.replace('backbone', 'encoder').replace('body_rotation_net', 'body_regressor').replace(
                 'hand_rotation_net', 'hand_regressor')
             new_state_dict[k] = v
-        self.logger.warning("Attention: Strict=False is set for checkpoint loading. Please check manually.")
         model.load_state_dict(new_state_dict, strict=False)
         model.cuda()
         model.eval()

@@ -231,7 +231,7 @@ def rot6d_to_axis_angle(x):
     a2 = x[:, :, 1]
     b1 = F.normalize(a1)
     b2 = F.normalize(a2 - torch.einsum('bi,bi->b', b1, a2).unsqueeze(-1) * b1)
-    b3 = torch.cross(b1, b2)
+    b3 = torch.cross(b1, b2, dim=1)
     rot_mat = torch.stack((b1, b2, b3), dim=-1)  # 3x3 rotation matrix
 
     rot_mat = torch.cat([rot_mat, torch.zeros((batch_size, 3, 1)).cuda().float()], 2)  # 3x4 rotation matrix

@@ -1,32 +1,32 @@
 #!/usr/bin/env bash
 CKPT_NAME=$1
 FILE_NAME=$2
-FPS=${3:-30}
 
 NAME="${FILE_NAME%.*}"
 EXT="${FILE_NAME##*.}"
 
-IMG_PATH=./demo/input_frames/$NAME
-OUTPUT_PATH=./demo/output_frames/$NAME
-
-mkdir -p $IMG_PATH
-mkdir -p $OUTPUT_PATH
-
-# convert video to frames
+# Check if file is jpg or png
 case "$EXT" in
-    mp4|avi|mov|mkv|flv|wmv|webm|mpeg|mpg)
-        ffmpeg -i ./demo/$FILE_NAME -f image2 -vf fps=${FPS}/1 -qscale 0 ${IMG_PATH}/%06d.jpg 
-        ;;
-    jpg|jpeg|png|bmp|gif|tiff|tif|webp|svg)
-        cp ./demo/$FILE_NAME $IMG_PATH/000001.$EXT
+    jpg|jpeg|png)
         ;;
     *)
-        echo "Unknown file type."
+        echo "Error: Only JPG and PNG files are supported."
         exit 1
         ;;
 esac
 
-END_COUNT=$(find "$IMG_PATH" -type f | wc -l)
+IMG_PATH=/localhome/aha220/Hairdar/modules/SMPLest-X/demo/images/$NAME
+OUTPUT_PATH=/localhome/aha220/Hairdar/modules/SMPLest-X/demo/output_frames/$NAME
+
+# mkdir -p $IMG_PATH
+mkdir -p $OUTPUT_PATH
+
+# Copy single image
+# cp /localhome/aha220/Hairdar/modules/SMPLest-X/demo/images/$FILE_NAME $IMG_PATH/000001.$EXT
+
+# Set environment variables for OpenGL rendering
+export PYOPENGL_PLATFORM=osmesa
+export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 
 # inference with smplest_x
 PYTHONPATH=../:$PYTHONPATH \
@@ -34,22 +34,10 @@ python main/inference.py \
     --num_gpus 1 \
     --file_name $NAME \
     --ckpt_name $CKPT_NAME \
-    --end $END_COUNT \
+    --end 1 \
 
+# Copy result image
+# cp $OUTPUT_PATH/000001.$EXT /localhome/aha220/Hairdar/modules/SMPLest-X/demo/result_$FILE_NAME
 
-# convert frames to video
-case "$EXT" in
-    mp4|avi|mov|mkv|flv|wmv|webm|mpeg|mpg)
-        ffmpeg -y -f image2 -r ${FPS} -i ${OUTPUT_PATH}/%06d.jpg -vcodec mjpeg -qscale 0 -pix_fmt yuv420p ./demo/result_${NAME}.mp4
-        ;;
-    jpg|jpeg|png|bmp|gif|tiff|tif|webp|svg)
-        cp $OUTPUT_PATH/000001.$EXT ./demo/result_$FILE_NAME
-        ;;
-    *)
-        exit 1
-        ;;
-esac
-
-rm -rf ./demo/input_frames
-rm -rf ./demo/output_frames
-
+# rm -rf /localhome/aha220/Hairdar/modules/SMPLest-X/demo/input_frames
+# rm -rf /localhome/aha220/Hairdar/modules/SMPLest-X/demo/output_frames

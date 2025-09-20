@@ -3,7 +3,7 @@ import cv2
 import random
 import math
 from human_models.human_models import SMPL, SMPLX
-from utils.transforms import cam2pixel, transform_joint_to_other_db
+from smplestx_utils.transforms import cam2pixel, transform_joint_to_other_db
 import torch
 
 

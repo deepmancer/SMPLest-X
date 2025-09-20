@@ -6,7 +6,7 @@ import os
 import datetime
 from pathlib import Path
 import torch.distributed as dist
-from utils.distribute_utils import init_distributed_mode, \
+from smplestx_utils.distribute_utils import init_distributed_mode, \
     is_main_process, set_seed, get_dist_info
 from main.base import Trainer
 from human_models.human_models import SMPL, SMPLX

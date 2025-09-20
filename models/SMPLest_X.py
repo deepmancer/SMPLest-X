@@ -7,8 +7,8 @@ import copy
 from models.module import TransformerDecoderHead, ViT
 from models.loss import CoordLoss, ParamLoss
 from human_models.human_models import SMPL, SMPLX
-from utils.transforms import rot6d_to_axis_angle, batch_rodrigues, rot6d_to_rotmat
-from utils.data_utils import load_img
+from smplestx_utils.transforms import rot6d_to_axis_angle, batch_rodrigues, rot6d_to_rotmat
+from smplestx_utils.data_utils import load_img
 
 
 class Model(nn.Module):
