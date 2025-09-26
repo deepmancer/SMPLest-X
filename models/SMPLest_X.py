@@ -6,7 +6,7 @@ import math
 import copy
 from models.module import TransformerDecoderHead, ViT
 from models.loss import CoordLoss, ParamLoss
-from human_models.human_models import SMPL, SMPLX
+from human_models.human_models_smplerx import SMPL, SMPLX
 from smplestx_utils.transforms import rot6d_to_axis_angle, batch_rodrigues, rot6d_to_rotmat
 from smplestx_utils.data_utils import load_img
 
@@ -14,7 +14,7 @@ from smplestx_utils.data_utils import load_img
 class Model(nn.Module):
     def __init__(self, config, encoder, decoder):
         super(Model, self).__init__()
-        self.smpl_x = SMPLX.get_instance()
+        self.smpl_x = SMPLX()
         
         # network
         self.cfg = config

@@ -85,7 +85,7 @@ config = {
     'input_img_shape': (512, 384),
     'input_body_shape': (256, 192),
     'output_hm_shape': (16, 16, 12),
-    'focal': (5000, 5000),
+    'focal': (int(1024 * 50/36), int(1024 * 50/36)),  # virtual focal length
     'princpt': (192 / 2, 256 / 2),  # virtual principal point position
     'body_3d_size': 2,
     'hand_3d_size': 0.3,

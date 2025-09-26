@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from torch.nn import functional as F
 from einops.einops import rearrange
-
+from modules.SMPLestX.configs.config_smpler_x_h32 import config as cfg
 
 def cam2pixel(cam_coord, f, c):
     x = cam_coord[:, 0] / cam_coord[:, 2] * f[0] + c[0]
@@ -364,3 +364,36 @@ def soft_argmax_3d(heatmap3d):
 
     coord_out = torch.cat((accu_x, accu_y, accu_z), dim=2)
     return coord_out
+
+
+def restore_bbox(bbox_center, bbox_size, aspect_ratio, extension_ratio):
+    bbox = bbox_center.view(-1, 1, 2) + torch.cat((-bbox_size.view(-1, 1, 2) / 2., bbox_size.view(-1, 1, 2) / 2.),
+                                                  1)  # xyxy in (cfg["output_hm_shape"][2], cfg["output_hm_shape"][1]) space
+    bbox[:, :, 0] = bbox[:, :, 0] / cfg["output_hm_shape"][2] * cfg["input_body_shape"][1]
+    bbox[:, :, 1] = bbox[:, :, 1] / cfg["output_hm_shape"][1] * cfg["input_body_shape"][0]
+    bbox = bbox.view(-1, 4)
+
+    # xyxy -> xywh
+    bbox[:, 2] = bbox[:, 2] - bbox[:, 0]
+    bbox[:, 3] = bbox[:, 3] - bbox[:, 1]
+
+    # aspect ratio preserving bbox
+    w = bbox[:, 2]
+    h = bbox[:, 3]
+    c_x = bbox[:, 0] + w / 2.
+    c_y = bbox[:, 1] + h / 2.
+
+    mask1 = w > (aspect_ratio * h)
+    mask2 = w < (aspect_ratio * h)
+    h[mask1] = w[mask1] / aspect_ratio
+    w[mask2] = h[mask2] * aspect_ratio
+
+    bbox[:, 2] = w * extension_ratio
+    bbox[:, 3] = h * extension_ratio
+    bbox[:, 0] = c_x - bbox[:, 2] / 2.
+    bbox[:, 1] = c_y - bbox[:, 3] / 2.
+
+    # xywh -> xyxy
+    bbox[:, 2] = bbox[:, 2] + bbox[:, 0]
+    bbox[:, 3] = bbox[:, 3] + bbox[:, 1]
+    return bbox

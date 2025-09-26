@@ -1,40 +1,44 @@
 import numpy as np
 import torch
 import os.path as osp
+from modules.SMPLestX.configs.config_smpler_x_h32 import config as cfg
 import smplx
 import pickle
 
-class SMPLX:
+class SMPLX(object):
     _instance = None
+    _initialized = False
 
-    def __new__(cls,config=None):
-        """Ensures only one instance of SMPL exists."""
+    @classmethod
+    def get_instance(cls, *args, **kwargs):
         if cls._instance is None:
-            assert config is not None, 'SMPLX requires human model path'
-            cls._instance = super(SMPLX, cls).__new__(cls)
-            cls._instance._initialize(config)
+            cls._instance = SMPLX(*args, **kwargs)
         return cls._instance
 
-    def _initialize(self, human_model_path):
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super(SMPLX, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self, *args, **kwargs):
         self.layer_arg = {'create_global_orient': False, 'create_body_pose': False, 'create_left_hand_pose': False, 'create_right_hand_pose': False, 'create_jaw_pose': False, 'create_leye_pose': False, 'create_reye_pose': False, 'create_betas': False, 'create_expression': False, 'create_transl': False}
-        self.layer = {
-            'neutral': smplx.create(human_model_path, 'smplx', gender='NEUTRAL', use_pca=False, use_face_contour=True, **self.layer_arg),
-            'male': smplx.create(human_model_path, 'smplx', gender='MALE', use_pca=False, use_face_contour=True, **self.layer_arg),
-            'female': smplx.create(human_model_path, 'smplx', gender='FEMALE', use_pca=False, use_face_contour=True, **self.layer_arg)
-        }
+        self.layer = {'neutral': smplx.create(cfg["human_model_path"], 'smplx', gender='NEUTRAL', use_pca=False, use_face_contour=True, **self.layer_arg),
+                        'male': smplx.create(cfg["human_model_path"], 'smplx', gender='MALE', use_pca=False, use_face_contour=True, **self.layer_arg),
+                        'female': smplx.create(cfg["human_model_path"], 'smplx', gender='FEMALE', use_pca=False, use_face_contour=True, **self.layer_arg)
+                        }
         self.vertex_num = 10475
         self.face = self.layer['neutral'].faces
         self.shape_param_dim = 10
         self.expr_code_dim = 10
-        with open(osp.join(human_model_path, 'smplx', 'SMPLX_to_J14.pkl'), 'rb') as f:
+        with open(osp.join(cfg["human_model_path"], 'smplx', 'SMPLX_to_J14.pkl'), 'rb') as f:
             self.j14_regressor = pickle.load(f, encoding='latin1')
-        with open(osp.join(human_model_path, 'smplx', 'MANO_SMPLX_vertex_ids.pkl'), 'rb') as f:
+        with open(osp.join(cfg["human_model_path"], 'smplx', 'MANO_SMPLX_vertex_ids.pkl'), 'rb') as f:
             self.hand_vertex_idx = pickle.load(f, encoding='latin1')
-        self.face_vertex_idx = np.load(osp.join(human_model_path, 'smplx', 'SMPL-X__FLAME_vertex_ids.npy'))
+        self.face_vertex_idx = np.load(osp.join(cfg["human_model_path"], 'smplx', 'SMPL-X__FLAME_vertex_ids.npy'))
         self.J_regressor = self.layer['neutral'].J_regressor.numpy()
         self.J_regressor_idx = {'pelvis': 0, 'lwrist': 20, 'rwrist': 21, 'neck': 12}
         self.orig_hand_regressor = self.make_hand_regressor()
-        #self.orig_hand_regressor = {'left': self.lhandayer.J_regressor.numpy()[[20,37,38,39,25,26,27,28,29,30,34,35,36,31,32,33],:], 'right': self.layer.J_regressor.numpy()[[21,52,53,54,40,41,42,43,44,45,49,50,51,46,47,48],:]}
+        #self.orig_hand_regressor = {'left': self.layer.J_regressor.numpy()[[20,37,38,39,25,26,27,28,29,30,34,35,36,31,32,33],:], 'right': self.layer.J_regressor.numpy()[[21,52,53,54,40,41,42,43,44,45,49,50,51,46,47,48],:]}
 
         # original SMPLX joint set
         self.orig_joint_num = 53 # 22 (body joints) + 30 (hand joints) + 1 (face jaw joint)
@@ -126,10 +130,7 @@ class SMPLX:
                                         self.pos_joints_name.index('R_Ring_1') - len(self.pos_joint_part['body']) - len(self.pos_joint_part['lhand']),
                                         self.pos_joints_name.index('R_Pinky_1') - len(self.pos_joint_part['body']) - len(self.pos_joint_part['lhand'])]
 
-    @classmethod
-    def get_instance(cls):
-        """Retrieve the singleton instance of SMPL."""
-        return cls()
+        self._initialized = True
 
     def make_hand_regressor(self):
         regressor = self.layer['neutral'].J_regressor.numpy()
@@ -156,8 +157,7 @@ class SMPLX:
         hand_regressor = {'left': lhand_regressor, 'right': rhand_regressor}
         return hand_regressor
 
-
-
+        
     def reduce_joint_set(self, joint):
         new_joint = []
         for name in self.pos_joints_name:
@@ -166,58 +166,24 @@ class SMPLX:
         new_joint = torch.stack(new_joint,1)
         return new_joint
 
-class SMPL:
-    _instance = None
-
-    def __new__(cls,config=None):
-        """Ensures only one instance of SMPL exists."""
-        if cls._instance is None:
-            assert config is not None, 'SMPL requires human model path'
-            cls._instance = super(SMPL, cls).__new__(cls)
-            cls._instance._initialize(config)
-        return cls._instance
-
-    def _initialize(self, human_model_path):
-        """Initialize the SMPL model instance."""
-        self.layer_arg = {
-            'create_body_pose': False,
-            'create_betas': False,
-            'create_global_orient': False,
-            'create_transl': False
-        }
-        self.layer = {
-            'neutral': smplx.create(human_model_path, 'smpl', gender='NEUTRAL', **self.layer_arg),
-            'male': smplx.create(human_model_path, 'smpl', gender='MALE', **self.layer_arg),
-            'female': smplx.create(human_model_path, 'smpl', gender='FEMALE', **self.layer_arg)
-        }
+class SMPL(object):
+    def __init__(self):
+        self.layer_arg = {'create_body_pose': False, 'create_betas': False, 'create_global_orient': False, 'create_transl': False}
+        self.layer = {'neutral': smplx.create(cfg["human_model_path"], 'smpl', gender='NEUTRAL', **self.layer_arg), 'male': smplx.create(cfg["human_model_path"], 'smpl', gender='MALE', **self.layer_arg), 'female': smplx.create(cfg["human_model_path"], 'smpl', gender='FEMALE', **self.layer_arg)}
         self.vertex_num = 6890
         self.face = self.layer['neutral'].faces
         self.shape_param_dim = 10
         self.vposer_code_dim = 32
 
-        # Original SMPL joint set
+        # original SMPL joint set
         self.orig_joint_num = 24
-        self.orig_joints_name = (
-            'Pelvis', 'L_Hip', 'R_Hip', 'Spine_1', 'L_Knee', 'R_Knee', 'Spine_2',
-            'L_Ankle', 'R_Ankle', 'Spine_3', 'L_Foot', 'R_Foot', 'Neck', 'L_Collar',
-            'R_Collar', 'Head', 'L_Shoulder', 'R_Shoulder', 'L_Elbow', 'R_Elbow',
-            'L_Wrist', 'R_Wrist', 'L_Hand', 'R_Hand'
-        )
-        self.orig_flip_pairs = (
-            (1, 2), (4, 5), (7, 8), (10, 11), (13, 14), (16, 17),
-            (18, 19), (20, 21), (22, 23)
-        )
+        self.orig_joints_name = ('Pelvis', 'L_Hip', 'R_Hip', 'Spine_1', 'L_Knee', 'R_Knee', 'Spine_2', 'L_Ankle', 'R_Ankle', 'Spine_3', 'L_Foot', 'R_Foot', 'Neck', 'L_Collar', 'R_Collar', 'Head', 'L_Shoulder', 'R_Shoulder', 'L_Elbow', 'R_Elbow', 'L_Wrist', 'R_Wrist', 'L_Hand', 'R_Hand')
+        self.orig_flip_pairs = ( (1,2), (4,5), (7,8), (10,11), (13,14), (16,17), (18,19), (20,21), (22,23) )
         self.orig_root_joint_idx = self.orig_joints_name.index('Pelvis')
         self.orig_joint_regressor = self.layer['neutral'].J_regressor.numpy().astype(np.float32)
-
+        
         self.joint_num = self.orig_joint_num
         self.joints_name = self.orig_joints_name
         self.flip_pairs = self.orig_flip_pairs
         self.root_joint_idx = self.orig_root_joint_idx
         self.joint_regressor = self.orig_joint_regressor
-
-    @classmethod
-    def get_instance(cls):
-        """Retrieve the singleton instance of SMPL."""
-        return cls()
-

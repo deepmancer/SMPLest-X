@@ -19,7 +19,7 @@ from tqdm import tqdm
 from ultralytics import YOLO
 
 # Local application imports
-from human_models.human_models import SMPLX
+from human_models.human_models_smplerx import SMPLX
 from main.base import Tester
 from main.config import Config
 from smplestx_utils.data_utils import load_img, process_bbox, generate_patch_image
@@ -222,7 +222,7 @@ def project_3d_to_2d(points_3d, focal, princpt):
     return projected
 
 def optimize_smplx_landmarks(initial_params, gt_landmarks_2d, focal, princpt,
-                           smplx_model, asset_paths, num_steps=60, lr=3e-3, landmark_weight=1.0, device='cuda'):
+                           smplx_model, asset_paths, num_steps=50, lr=3e-3, landmark_weight=1.0, device='cuda'):
     optimizable_params = {}
     fixed_params = {}
 
@@ -297,7 +297,7 @@ def optimize_smplx_landmarks(initial_params, gt_landmarks_2d, focal, princpt,
 
 
 def main(data_dir, ckpt_name='smplest_x_h', bust_assets_dir='/localhome/aha220/Hairdar/assets/bust/', 
-            use_yolo=False, num_optimization_steps=60, lr=2e-3, landmark_weight=1.0):
+            use_yolo=True, num_optimization_steps=20, lr=1e-3, landmark_weight=1.0):
     
     cudnn.benchmark = True
 
@@ -470,7 +470,7 @@ def main(data_dir, ckpt_name='smplest_x_h', bust_assets_dir='/localhome/aha220/H
                     gender='neutral',
                     use_face_contour=True,
                     use_pca=False,
-                    flat_hand_mean=True,
+                    # flat_hand_mean=True,
                     batch_size=1
                 ).cuda()
 
