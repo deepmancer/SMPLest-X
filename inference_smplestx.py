@@ -296,14 +296,13 @@ def optimize_smplx_landmarks(initial_params, gt_landmarks_2d, focal, princpt,
     return optimized_params, loss_history
 
 
-def main(data_dir, ckpt_name='smplest_x_h', bust_assets_dir='/localhome/aha220/Hairdar/assets/bust/', 
-            use_yolo=True, num_optimization_steps=20, lr=1e-3, landmark_weight=1.0):
+def main(data_dir, output_dir, lmk_dir, ckpt_name='smplest_x_h', bust_assets_dir='/localhome/aha220/Hairdar/assets/bust/', 
+            use_yolo=True, num_optimization_steps=10, lr=1e-3, landmark_weight=1.0):
     
     cudnn.benchmark = True
 
-    input_dir = os.path.join(data_dir, 'resized_img')
-    output_dir = os.path.join(data_dir, 'smplx_params')
-    facial_landmarks_dir = os.path.join(data_dir, 'lmk')
+    input_dir = data_dir
+    facial_landmarks_dir = lmk_dir
 
     # Construct asset paths from bust_assets_dir
     asset_paths = get_bust_asset_paths(bust_assets_dir)
@@ -551,9 +550,9 @@ def main(data_dir, ckpt_name='smplest_x_h', bust_assets_dir='/localhome/aha220/H
         img_name_no_ext = os.path.splitext(os.path.basename(img_path))[0]
 
         # Save as pickle file (most comprehensive, preserves numpy arrays)
-        param_filename = "params.pkl"
-        with open(os.path.join(image_output_folder, param_filename), 'wb') as f:
-            pickle.dump(all_params, f)
+        # param_filename = "params.pkl"
+        # with open(os.path.join(image_output_folder, param_filename), 'wb') as f:
+        #     pickle.dump(all_params, f)
         
         # Save as JSON file (human readable but limited precision)
         json_params = {
@@ -568,20 +567,20 @@ def main(data_dir, ckpt_name='smplest_x_h', bust_assets_dir='/localhome/aha220/H
             json.dump(json_params, f, indent=2)
         
         # Create separate parameter output directory
-        param_output_folder = os.path.join(image_output_folder, 'parameters')
-        os.makedirs(param_output_folder, exist_ok=True)
+        # param_output_folder = os.path.join(image_output_folder, 'parameters')
+        # os.makedirs(param_output_folder, exist_ok=True)
         
         # Save individual numpy arrays for structured access
-        for param_name, param_value in smplx_params.items():
-            if isinstance(param_value, np.ndarray):
-                np.save(os.path.join(param_output_folder, f"{param_name}.npy"), param_value)
+        # for param_name, param_value in smplx_params.items():
+        #     if isinstance(param_value, np.ndarray):
+        #         np.save(os.path.join(param_output_folder, f"{param_name}.npy"), param_value)
         
         # Save camera parameters as numpy
-        np.save(os.path.join(param_output_folder, "focal.npy"), np.array(focal))
-        np.save(os.path.join(param_output_folder, "princpt.npy"), np.array(princpt))
-        np.save(os.path.join(param_output_folder, "bbox.npy"), np.array(bbox))
+        # np.save(os.path.join(param_output_folder, "focal.npy"), np.array(focal))
+        # np.save(os.path.join(param_output_folder, "princpt.npy"), np.array(princpt))
+        # np.save(os.path.join(param_output_folder, "bbox.npy"), np.array(bbox))
 
-        print(f"Parameters saved for image {img_name_no_ext}")
+        # print(f"Parameters saved for image {img_name_no_ext}")
 
         # save rendered image
         img_name_final = os.path.basename(img_path)
