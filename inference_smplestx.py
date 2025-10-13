@@ -25,16 +25,13 @@ from main.config import Config
 from smplestx_utils.data_utils import load_img, process_bbox, generate_patch_image
 from smplestx_utils.visualization_utils import render_mesh
 
-DEFAULT_DATA_DIR = '/localhome/aha220/Hairdar/assets/results/Difflocks/'
 
 def get_bust_asset_paths(bust_assets_dir):
     return {
-        'flame_embed_68': os.path.join(bust_assets_dir, 'flame', 'flame_static_embedding_68_v4.npz'),
-        'flame_smplx_corr': os.path.join(bust_assets_dir, 'smplx', 'SMPL-X__FLAME_vertex_ids.npy'),
-        'flame_generic_model': os.path.join(bust_assets_dir, 'flame', 'models', 'generic_model.pkl'),
-        'smplx_models_dir': os.path.join(bust_assets_dir, 'smplx', 'models')
+        'flame_embed_68': 'assets/body_models/landmarks/flame/flame_static_embedding_68_v4.npz',
+        'flame_smplx_corr': "assets/body_models/base_models/smplx/vertex_mappings/smplx_flame_vertex_ids.npy",
+        'flame_generic_model': 'assets/body_models/base_models/flame/parametric_models/generic_model.pkl',
     }
-
 
 def validate_asset_paths(asset_paths):
     missing_files = []
@@ -63,11 +60,7 @@ class YOLOManager:
     
     def _initialize_detector(self, model_path=None):
         try:
-            if model_path is None and self.cfg is not None:
-                model_path = getattr(self.cfg.inference.detection, "model_path", 'modules/SMPLestX/pretrained_models/yolov8x.pt')
-            elif model_path is None:
-                model_path = 'modules/SMPLestX/pretrained_models/yolov8x.pt'
-            
+            model_path = 'modules/SMPLestX/pretrained_models/yolov8x.pt'
             self.detector = YOLO(model_path)
             print(f"YOLO detector initialized with model: {model_path}")
         except Exception as e:
@@ -314,19 +307,6 @@ def main(data_dir, output_dir, lmk_dir, ckpt_name='smplest_x_h', bust_assets_dir
     except FileNotFoundError as e:
         print(f"Error: {e}")
         return
-    
-    smplx_model_path = asset_paths['smplx_models_dir']
-    
-    # Validate directories exist
-    if not os.path.isdir(smplx_model_path):
-        print(f"Error: SMPL-X model directory not found: {smplx_model_path}")
-        return
-        
-    if not os.path.isdir(input_dir):
-        print(f"Error: Input directory not found: {input_dir}")
-        return
-
-    print(f"Using SMPL-X models from: {smplx_model_path}")
 
     # Create output directory if it doesn't exist
     try:
@@ -350,7 +330,7 @@ def main(data_dir, output_dir, lmk_dir, ckpt_name='smplest_x_h', bust_assets_dir
 
     # Initialize model managers
     yolo_manager = YOLOManager(use_yolo=use_yolo, cfg=cfg)
-    smplestx_manager = SMPLestXManager(cfg=cfg, smplx_model_path=smplx_model_path)
+    smplestx_manager = SMPLestXManager(cfg=cfg, smplx_model_path="assets/body_models/base_models/smplx/parametric_models/lh/SMPLX_NEUTRAL.npz")
     
     # Get SMPL-X model for rendering
     smpl_x = smplestx_manager.get_smplx_model()
@@ -464,7 +444,7 @@ def main(data_dir, output_dir, lmk_dir, ckpt_name='smplest_x_h', bust_assets_dir
 
                 # Create SMPL-X model for optimization
                 smplx_model = smplx.create(
-                    smplx_model_path,
+                    "assets/body_models/base_models/smplx/parametric_models/lh/SMPLX_NEUTRAL.npz",
                     model_type='smplx',
                     gender='neutral',
                     use_face_contour=True,
@@ -509,11 +489,7 @@ def main(data_dir, output_dir, lmk_dir, ckpt_name='smplest_x_h', bust_assets_dir
                     smplx_params['smplx_mesh_cam'] = mesh
                 
                 print(f"Optimization completed. Final loss: {loss_history[-1]:.6f}")
-                
-                # Save loss history
-                loss_filename = "optimization_loss.npy"
-                np.save(os.path.join(image_output_folder, loss_filename), np.array(loss_history))
-                
+
             else:
                 print(f"No facial landmarks found for {img_name_no_ext}, skipping optimization")
         elif num_optimization_steps > 0:
@@ -586,6 +562,3 @@ def main(data_dir, output_dir, lmk_dir, ckpt_name='smplest_x_h', bust_assets_dir
         img_name_final = os.path.basename(img_path)
         output_img_name = "overlayed.png"
         cv2.imwrite(os.path.join(image_output_folder, output_img_name), vis_img[:, :, ::-1])
-
-if __name__ == "__main__":
-    main(DEFAULT_DATA_DIR)

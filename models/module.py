@@ -34,7 +34,7 @@ class TransformerDecoderHead(nn.Module):
         self.dim_out = dim_out
         self.token_dim = task_tokens_num
 
-        smpl_x = SMPLX("/localhome/aha220/Hairdar/assets/bust/smplx/models")
+        smpl_x = SMPLX("assets/body_models/base_models/smplx/parametric_models/v1/SMPLX_NEUTRAL.npz")
         HAND_JOINT_NUM = len(smpl_x.orig_joint_part['rhand'])        
         BODY_JOINT_NUM = len(smpl_x.orig_joint_part['body'])
         SHAPE_NUM = smpl_x.shape_param_dim

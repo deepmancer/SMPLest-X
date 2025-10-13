@@ -1,5 +1,5 @@
 config = {
-  "human_model_path": "assets/bust/smplx/models/",
+  "human_model_path": "assets/body_models",
   "data": {
     "use_cache": True,
     "data_dir": "./data",

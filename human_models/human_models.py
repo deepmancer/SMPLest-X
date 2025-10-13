@@ -26,11 +26,11 @@ class SMPLX:
         self.face = self.layer['neutral'].faces
         self.shape_param_dim = 10
         self.expr_code_dim = 10
-        with open(osp.join(human_model_path, 'smplx', 'SMPLX_to_J14.pkl'), 'rb') as f:
+        with open("assets/body_models/base_models/smplx/vertex_mappings/smplx_to_j14.pkl", 'rb') as f:
             self.j14_regressor = pickle.load(f, encoding='latin1')
-        with open(osp.join(human_model_path, 'smplx', 'MANO_SMPLX_vertex_ids.pkl'), 'rb') as f:
+        with open("assets/body_models/base_models/smplx/vertex_mappings/mano_smplx_vertex_ids.pkl", 'rb') as f:
             self.hand_vertex_idx = pickle.load(f, encoding='latin1')
-        self.face_vertex_idx = np.load(osp.join(human_model_path, 'smplx', 'SMPL-X__FLAME_vertex_ids.npy'))
+        self.face_vertex_idx = np.load("assets/body_models/base_models/smplx/vertex_mappings/smplx_flame_vertex_ids.npy")
         self.J_regressor = self.layer['neutral'].J_regressor.numpy()
         self.J_regressor_idx = {'pelvis': 0, 'lwrist': 20, 'rwrist': 21, 'neck': 12}
         self.orig_hand_regressor = self.make_hand_regressor()
