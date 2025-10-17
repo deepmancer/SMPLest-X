@@ -289,8 +289,14 @@ def optimize_smplx_landmarks(initial_params, gt_landmarks_2d, focal, princpt,
     return optimized_params, loss_history
 
 
-def main(data_dir, output_dir, lmk_dir, ckpt_name='smplest_x_h', bust_assets_dir='/localhome/aha220/Hairdar/assets/bust/', 
-            use_yolo=True, num_optimization_steps=10, lr=1e-3, landmark_weight=1.0):
+def main(
+    data_dir,
+    output_dir,
+    lmk_dir,
+    ckpt_name='smplest_x_h',
+    bust_assets_dir='/localhome/aha220/Hairdar/assets/bust/',
+    use_yolo=True, num_optimization_steps=10, lr=1e-3, landmark_weight=1.0,
+):
     
     cudnn.benchmark = True
 
@@ -350,6 +356,7 @@ def main(data_dir, output_dir, lmk_dir, ckpt_name='smplest_x_h', bust_assets_dir
     
     print(f"Found {len(image_files)} images to process")
 
+    processed_samples = []
     for img_path in tqdm(image_files, desc="Processing images"):
         
         # Get image name without extension for output folder creation
@@ -562,3 +569,12 @@ def main(data_dir, output_dir, lmk_dir, ckpt_name='smplest_x_h', bust_assets_dir
         img_name_final = os.path.basename(img_path)
         output_img_name = "overlayed.png"
         cv2.imwrite(os.path.join(image_output_folder, output_img_name), vis_img[:, :, ::-1])
+        
+        # Return paths to the saved parameter files
+        processed_samples.append({
+            'overlayed_image_path': os.path.join(image_output_folder, output_img_name),
+            'pre_optimization_image_path': os.path.join(image_output_folder, pre_opt_img_name),
+            'smplx_params_path': os.path.join(image_output_folder, json_filename),
+        })
+
+    return processed_samples
