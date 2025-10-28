@@ -222,17 +222,17 @@ def optimize_smplx_landmarks(initial_params, gt_landmarks_2d, focal, princpt,
     optimizable_params['smplx_expr'] = torch.tensor(initial_params['smplx_expr'], device=device, requires_grad=True)
     optimizable_params["smplx_jaw_pose"] = torch.tensor(initial_params['smplx_jaw_pose'], device=device, requires_grad=True)
     optimizable_params['cam_trans'] = torch.tensor(initial_params['cam_trans'], device=device, requires_grad=True)
+    optimizable_params['smplx_shape'] = torch.tensor(initial_params['smplx_shape'], device=device, requires_grad=True)
     fixed_params['smplx_root_pose'] = torch.tensor(initial_params['smplx_root_pose'], device=device)
     fixed_params['smplx_body_pose'] = torch.tensor(initial_params['smplx_body_pose'], device=device)
     fixed_params['smplx_lhand_pose'] = torch.tensor(initial_params['smplx_lhand_pose'], device=device)
     fixed_params['smplx_rhand_pose'] = torch.tensor(initial_params['smplx_rhand_pose'], device=device)
-    fixed_params['smplx_shape'] = torch.tensor(initial_params['smplx_shape'], device=device)
     fixed_params['cam_trans'] = torch.tensor(initial_params['cam_trans'], device=device)
 
     # Setup optimizer - only optimize expression parameters
     # Setup optimizer with different learning rates for different parameter groups
     param_groups = [
-        {'params': [optimizable_params['smplx_expr'], optimizable_params['smplx_jaw_pose']], 'lr': lr},
+        {'params': [optimizable_params['smplx_expr'], optimizable_params['smplx_jaw_pose'], optimizable_params['smplx_shape']], 'lr': lr},
         {'params': [optimizable_params['cam_trans']], 'lr': lr * 0.5}
     ]
     optimizer = torch.optim.AdamW(param_groups)
@@ -255,7 +255,7 @@ def optimize_smplx_landmarks(initial_params, gt_landmarks_2d, focal, princpt,
             left_hand_pose=fixed_params['smplx_lhand_pose'].unsqueeze(0),
             right_hand_pose=fixed_params['smplx_rhand_pose'].unsqueeze(0),
             jaw_pose=optimizable_params['smplx_jaw_pose'].unsqueeze(0),
-            betas=fixed_params['smplx_shape'].unsqueeze(0),
+            betas=optimizable_params['smplx_shape'].unsqueeze(0),
             expression=optimizable_params['smplx_expr'].unsqueeze(0),
             transl=cam_trans.unsqueeze(0),
             return_verts=True
@@ -295,7 +295,7 @@ def main(
     lmk_dir,
     ckpt_name='smplest_x_h',
     bust_assets_dir='/localhome/aha220/Hairdar/assets/bust/',
-    use_yolo=True, num_optimization_steps=10, lr=1e-3, landmark_weight=1.0,
+    use_yolo=True, num_optimization_steps=10, lr=8e-3, landmark_weight=1.0,
 ):
     
     cudnn.benchmark = True
