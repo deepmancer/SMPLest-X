@@ -26,6 +26,28 @@ from smplestx_utils.data_utils import load_img, process_bbox, generate_patch_ima
 from smplestx_utils.visualization_utils import render_mesh
 
 
+def save_smplx_mesh(vertices: np.ndarray, faces: np.ndarray, output_path: os.PathLike | str) -> None:
+    """Persist SMPL-X vertices + triangular faces to an OBJ file."""
+    if vertices is None or faces is None:
+        return
+
+    vertices = np.asarray(vertices, dtype=np.float32)
+    faces = np.asarray(faces, dtype=np.int32)
+    if vertices.ndim != 2 or vertices.shape[1] != 3:
+        raise ValueError(f"Expected vertices with shape (N, 3); got {vertices.shape}")
+    if faces.ndim != 2 or faces.shape[1] != 3:
+        raise ValueError(f"Expected triangular faces with shape (M, 3); got {faces.shape}")
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with output_path.open('w', encoding='utf-8') as obj_file:
+        for vx, vy, vz in vertices:
+            obj_file.write(f"v {vx:.6f} {vy:.6f} {vz:.6f}\n")
+        for f0, f1, f2 in faces:
+            obj_file.write(f"f {f0 + 1} {f1 + 1} {f2 + 1}\n")
+
+
 def get_bust_asset_paths(bust_assets_dir):
     return {
         'flame_embed_68': 'assets/body_models/landmarks/flame/flame_static_embedding_68_v4.npz',
@@ -501,6 +523,12 @@ def main(
                 print(f"No facial landmarks found for {img_name_no_ext}, skipping optimization")
         elif num_optimization_steps > 0:
             print("Optimization requested but no facial_landmarks_dir provided")
+
+        mesh_output_path = Path(image_output_folder) / "smplx.obj"
+        try:
+            save_smplx_mesh(mesh, smpl_x.face, mesh_output_path)
+        except Exception as exc:
+            print(f"Warning: Failed to save SMPL-X mesh for {img_name}: {exc}")
         
         # Camera parameters (computed focal and principal point)
         camera_params = {
@@ -575,6 +603,7 @@ def main(
             'overlayed_image_path': os.path.join(image_output_folder, output_img_name),
             'pre_optimization_image_path': os.path.join(image_output_folder, pre_opt_img_name),
             'smplx_params_path': os.path.join(image_output_folder, json_filename),
+            'smplx_mesh_path': str(mesh_output_path),
         })
 
     return processed_samples
