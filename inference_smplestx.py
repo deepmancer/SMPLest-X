@@ -23,7 +23,7 @@ from human_models.human_models_smplerx import SMPLX
 from main.base import Tester
 from main.config import Config
 from smplestx_utils.data_utils import load_img, process_bbox, generate_patch_image
-from smplestx_utils.visualization_utils import render_mesh
+from smplestx_utils.visualization_utils import render_mesh, render_segmentation_mask
 
 
 def save_smplx_mesh(vertices: np.ndarray, faces: np.ndarray, output_path: os.PathLike | str) -> None:
@@ -557,6 +557,16 @@ def main(
         # draw mesh
         vis_img = render_mesh(vis_img, mesh, smpl_x.face, {'focal': focal, 'princpt': princpt}, mesh_as_vertices=True)
         
+        # Render and save segmentation mask
+        segmentation_mask = render_segmentation_mask(
+            mesh, 
+            smpl_x.face, 
+            {'focal': focal, 'princpt': princpt},
+            (original_img_height, original_img_width)
+        )
+        segmentation_mask_path = os.path.join(image_output_folder, "segmentation_mask.png")
+        cv2.imwrite(segmentation_mask_path, segmentation_mask)
+        
         # Save parameters to files
         img_name_no_ext = os.path.splitext(os.path.basename(img_path))[0]
 
@@ -604,6 +614,7 @@ def main(
             'pre_optimization_image_path': os.path.join(image_output_folder, pre_opt_img_name),
             'smplx_params_path': os.path.join(image_output_folder, json_filename),
             'smplx_mesh_path': str(mesh_output_path),
+            'segmentation_mask_path': segmentation_mask_path,
         })
 
     return processed_samples

@@ -4,10 +4,27 @@ import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import os
-os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
-import pyrender
+import torch
 import trimesh
+
+# PyTorch3D imports for modern rendering
+try:
+    from pytorch3d.structures import Meshes
+    from pytorch3d.renderer import (
+        look_at_view_transform,
+        FoVPerspectiveCameras,
+        RasterizationSettings,
+        MeshRenderer,
+        MeshRasterizer,
+        SoftPhongShader,
+        HardPhongShader,
+        PointLights,
+        TexturesVertex,
+    )
+    PYTORCH3D_AVAILABLE = True
+except ImportError:
+    PYTORCH3D_AVAILABLE = False
+    print("Warning: PyTorch3D not available. Falling back to basic vertex rendering.")
 
 def vis_keypoints_with_skeleton(img, kps, kps_lines, kp_thresh=0.4, alpha=1):
     # Convert from plt 0-1 RGBA colors to 0-255 BGR colors for opencv.
@@ -102,9 +119,10 @@ def vis_3d_skeleton(kpt_3d, kpt_3d_vis, kps_lines, filename=None):
         if kpt_3d_vis[i2,0] > 0:
             ax.scatter(kpt_3d[i2,0], kpt_3d[i2,2], -kpt_3d[i2,1], c=colors[l], marker='o')
 
-    x_r = np.array([0, cfg.input_shape[1]], dtype=np.float32)
-    y_r = np.array([0, cfg.input_shape[0]], dtype=np.float32)
-    z_r = np.array([0, 1], dtype=np.float32)
+    # Note: cfg not available in this context, these lines are unused
+    # x_r = np.array([0, cfg.input_shape[1]], dtype=np.float32)
+    # y_r = np.array([0, cfg.input_shape[0]], dtype=np.float32)
+    # z_r = np.array([0, 1], dtype=np.float32)
     
     if filename is None:
         ax.set_title('3D vis')
@@ -136,65 +154,176 @@ def perspective_projection(vertices, cam_param):
     vertices[:, 1] = vertices[:, 1] * fy / vertices[:, 2] + cy
     return vertices
 
+def render_segmentation_mask(vertices, faces, cam_param, img_size):
+    """
+    Render a binary segmentation mask of the SMPL-X mesh using PyTorch3D.
+    
+    Args:
+        vertices: Mesh vertices (N, 3) as numpy array
+        faces: Mesh faces (M, 3) as numpy array
+        cam_param: Camera parameters dict with 'focal' and 'princpt'
+        img_size: Tuple of (height, width) for output mask
+    
+    Returns:
+        Binary segmentation mask (H, W) as uint8 where 255=body, 0=background
+    """
+    if not PYTORCH3D_AVAILABLE:
+        print("Warning: PyTorch3D not available. Cannot render segmentation mask.")
+        return np.zeros(img_size, dtype=np.uint8)
+    
+    focal, princpt = cam_param['focal'], cam_param['princpt']
+    img_h, img_w = img_size
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Convert to torch tensors
+    verts = torch.from_numpy(vertices).float().unsqueeze(0).to(device)  # (1, N, 3)
+    faces_tensor = torch.from_numpy(faces).long().unsqueeze(0).to(device)  # (1, M, 3)
+    
+    # Create uniform white color for segmentation
+    verts_rgb = torch.ones_like(verts)  # (1, N, 3) - all white
+    textures = TexturesVertex(verts_features=verts_rgb)
+    
+    # Create mesh
+    mesh = Meshes(verts=verts, faces=faces_tensor, textures=textures)
+    
+    # Setup camera
+    cameras = FoVPerspectiveCameras(
+        device=device,
+        R=torch.eye(3, device=device).unsqueeze(0),
+        T=torch.zeros(1, 3, device=device),
+        znear=0.01,
+        zfar=100.0,
+        fov=2 * np.arctan(img_h / (2 * focal[1])) * 180 / np.pi,
+        aspect_ratio=img_w / img_h,
+    )
+    
+    # Setup rasterizer
+    raster_settings = RasterizationSettings(
+        image_size=(img_h, img_w),
+        blur_radius=0.0,
+        faces_per_pixel=1,
+        bin_size=0,
+    )
+    
+    # No lighting needed for segmentation - use hard shader
+    renderer = MeshRenderer(
+        rasterizer=MeshRasterizer(cameras=cameras, raster_settings=raster_settings),
+        shader=HardPhongShader(device=device, cameras=cameras)
+    )
+    
+    # Render
+    with torch.no_grad():
+        images = renderer(mesh)  # (1, H, W, 4) RGBA
+    
+    # Extract alpha channel and create binary mask
+    rendered_alpha = images[0, ..., 3].cpu().numpy()  # (H, W)
+    mask = (rendered_alpha > 0).astype(np.uint8) * 255
+    
+    # Fix coordinate system: PyTorch3D renders upside down, and we need to flip horizontally
+    # to match the original image coordinate system
+    mask = cv2.flip(mask, -1)  # -1 flips both vertically and horizontally
+    
+    return mask
+
+
 def render_mesh(img, vertices, faces, cam_param, mesh_as_vertices=False):
-    if mesh_as_vertices:
-        # to run on cluster where headless pyrender is not supported for A100/V100
-        vertices_2d = perspective_projection(vertices, cam_param)
+    """
+    Render a mesh onto an image using PyTorch3D.
+    
+    Args:
+        img: Background image (H, W, 3) in RGB format
+        vertices: Mesh vertices (N, 3)
+        faces: Mesh faces (M, 3)
+        cam_param: Camera parameters dict with 'focal' and 'princpt'
+        mesh_as_vertices: If True, fall back to simple vertex projection
+    
+    Returns:
+        Rendered image with mesh overlay (H, W, 3) as uint8
+    """
+    if mesh_as_vertices or not PYTORCH3D_AVAILABLE:
+        # Fallback: simple vertex projection
+        vertices_2d = perspective_projection(vertices.copy(), cam_param)
         img = vis_keypoints(img, vertices_2d, alpha=0.8, radius=2, color=(0, 0, 255))
-    else:
-        focal, princpt = cam_param['focal'], cam_param['princpt']
-        camera = pyrender.IntrinsicsCamera(fx=focal[0], fy=focal[1], cx=princpt[0], cy=princpt[1])
-        # the inverse is same
-        pyrender2opencv = np.array([[1.0, 0, 0, 0],
-                                    [0, -1, 0, 0],
-                                    [0, 0, -1, 0],
-                                    [0, 0, 0, 1]])
-        
-
-        # render material
-        base_color = (1.0, 193/255, 193/255, 1.0)
-        material = pyrender.MetallicRoughnessMaterial(
-                metallicFactor=0,
-                alphaMode='OPAQUE',
-                baseColorFactor=base_color)
-        
-        material_new = pyrender.MetallicRoughnessMaterial(
-                metallicFactor=0.1,
-                roughnessFactor=0.4,
-                alphaMode='OPAQUE',
-                emissiveFactor=(0.2, 0.2, 0.2),
-                baseColorFactor=(0.7, 0.7, 0.7, 1))  
-        material = material_new
-        
-        # get body mesh
-        body_trimesh = trimesh.Trimesh(vertices, faces, process=False)
-        body_mesh = pyrender.Mesh.from_trimesh(body_trimesh, material=material)
-
-        # prepare camera and light
-        light = pyrender.DirectionalLight(color=np.ones(3), intensity=2.0)
-        cam_pose = pyrender2opencv @ np.eye(4)
-        
-        # build scene
-        scene = pyrender.Scene(bg_color=[0.0, 0.0, 0.0, 0.0],
-                                        ambient_light=(0.3, 0.3, 0.3))
-        scene.add(camera, pose=cam_pose)
-        scene.add(light, pose=cam_pose)
-        scene.add(body_mesh, 'mesh')
-
-        # render scene
-        r = pyrender.OffscreenRenderer(viewport_width=img.shape[1],
-                                        viewport_height=img.shape[0],
-                                        point_size=1.0)
-        
-        color, _ = r.render(scene, flags=pyrender.RenderFlags.RGBA)
-        color = color.astype(np.float32) / 255.0
-        alpha = 0.8 # set transparency in [0.0, 1.0]
-
-        valid_mask = (color[:, :, -1] > 0)[:, :, np.newaxis]
-        valid_mask = valid_mask * alpha
-        img = img / 255
-        color = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
-        output_img = (color[:, :, :] * valid_mask + (1 - valid_mask) * img)
-
-        img = (output_img * 255).astype(np.uint8)
+        return img
+    
+    # PyTorch3D rendering
+    focal, princpt = cam_param['focal'], cam_param['princpt']
+    img_h, img_w = img.shape[:2]
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Convert to torch tensors
+    verts = torch.from_numpy(vertices).float().unsqueeze(0).to(device)  # (1, N, 3)
+    faces_tensor = torch.from_numpy(faces).long().unsqueeze(0).to(device)  # (1, M, 3)
+    
+    # Create a soft pink/peach color for the body (similar to original pyrender material)
+    verts_rgb = torch.ones_like(verts) * torch.tensor([0.7, 0.7, 0.7], device=device)  # (1, N, 3)
+    textures = TexturesVertex(verts_features=verts_rgb)
+    
+    # Create mesh
+    mesh = Meshes(verts=verts, faces=faces_tensor, textures=textures)
+    
+    # Setup camera - convert from intrinsic parameters to PyTorch3D format
+    # PyTorch3D uses NDC coordinates, but we can use screen space with proper setup
+    focal_length = torch.tensor([[focal[0], focal[1]]], device=device, dtype=torch.float32)
+    principal_point = torch.tensor([[princpt[0], princpt[1]]], device=device, dtype=torch.float32)
+    
+    # Create perspective camera
+    cameras = FoVPerspectiveCameras(
+        device=device,
+        R=torch.eye(3, device=device).unsqueeze(0),  # Identity rotation
+        T=torch.zeros(1, 3, device=device),  # No translation
+        znear=0.01,
+        zfar=100.0,
+        fov=2 * np.arctan(img_h / (2 * focal[1])) * 180 / np.pi,  # Vertical FOV
+        aspect_ratio=img_w / img_h,
+    )
+    
+    # Setup rasterizer
+    raster_settings = RasterizationSettings(
+        image_size=(img_h, img_w),
+        blur_radius=0.0,
+        faces_per_pixel=1,
+        bin_size=0,
+    )
+    
+    # Setup lights (similar to pyrender's DirectionalLight with ambient)
+    lights = PointLights(
+        device=device,
+        location=[[0.0, 0.0, 3.0]],
+        ambient_color=((0.3, 0.3, 0.3),),
+        diffuse_color=((0.6, 0.6, 0.6),),
+        specular_color=((0.1, 0.1, 0.1),),
+    )
+    
+    # Create renderer with Phong shading
+    renderer = MeshRenderer(
+        rasterizer=MeshRasterizer(cameras=cameras, raster_settings=raster_settings),
+        shader=SoftPhongShader(device=device, cameras=cameras, lights=lights)
+    )
+    
+    # Render
+    with torch.no_grad():
+        images = renderer(mesh)  # (1, H, W, 4) RGBA
+    
+    # Extract RGB and alpha
+    rendered = images[0].cpu().numpy()  # (H, W, 4)
+    rendered_rgb = rendered[..., :3]  # (H, W, 3)
+    rendered_alpha = rendered[..., 3:4]  # (H, W, 1)
+    
+    # Fix coordinate system: PyTorch3D renders upside down and mirrored
+    # Flip both vertically and horizontally to match OpenCV coordinate system
+    rendered_rgb = cv2.flip(rendered_rgb, -1)  # -1 flips both axes
+    rendered_alpha = cv2.flip(rendered_alpha, -1)
+    
+    # Blend with background
+    alpha = 0.8  # Transparency factor
+    valid_mask = (rendered_alpha > 0) * alpha
+    
+    img_float = img.astype(np.float32) / 255.0
+    output_img = rendered_rgb * valid_mask + img_float * (1 - valid_mask)
+    
+    # Convert back to uint8
+    img = (output_img * 255).clip(0, 255).astype(np.uint8)
     return img
